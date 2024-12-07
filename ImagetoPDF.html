@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Image to PDF Generator</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+        }
+        h1 {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        #drop-zone {
+            border: 2px dashed #bbb;
+            border-radius: 10px;
+            padding: 20px;
+            text-align: center;
+            color: #666;
+            cursor: pointer;
+            margin-bottom: 20px;
+        }
+        #image-list {
+            list-style: none;
+            padding: 0;
+        }
+        #image-list li {
+            display: flex;
+            align-items: center;
+            margin-bottom: 10px;
+            padding: 5px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            background-color: #f9f9f9;
+            cursor: grab;
+        }
+        #image-list li.dragging {
+            opacity: 0.5;
+        }
+        #image-list li img {
+            width: 100px;
+            height: auto;
+            margin-right: 10px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+        }
+        #image-list li button {
+            margin-left: auto;
+            background-color: #ff4d4d;
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        #image-list li button:hover {
+            background-color: #ff0000;
+        }
+        #controls {
+            text-align: center;
+            margin-top: 20px;
+        }
+        #file-name {
+            margin-bottom: 10px;
+        }
+        button {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        .btn-generate {
+            background-color: #4CAF50;
+            color: white;
+        }
+        .btn-generate:hover {
+            background-color: #45a049;
+        }
+        .btn-add {
+            background-color: #007BFF;
+            color: white;
+        }
+        .btn-add:hover {
+            background-color: #0056b3;
+        }
+    </style>
+</head>
+<body>
+    <h1>Image to PDF Generator</h1>
+    <div id="drop-zone">Drag and Drop Images Here or Click to Upload</div>
+    <ul id="image-list"></ul>
+    <div id="controls">
+        <input type="text" id="file-name" placeholder="Enter PDF file name">
+        <button class="btn-add">Add More Images</button>
+        <button class="btn-generate">Generate PDF</button>
+    </div>
+
+    <input type="file" id="file-input" accept="image/*" multiple style="display: none;">
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script>
+        const dropZone = document.getElementById('drop-zone');
+        const fileInput = document.getElementById('file-input');
+        const imageList = document.getElementById('image-list');
+        const addButton = document.querySelector('.btn-add');
+        const generateButton = document.querySelector('.btn-generate');
+        const fileNameInput = document.getElementById('file-name');
+
+        let images = [];
+
+        function handleFiles(files) {
+            Array.from(files).forEach(file => {
+                if (!file.type.startsWith('image/')) return;
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    images.push(e.target.result);
+                    updateImageList();
+                };
+                reader.readAsDataURL(file);
+            });
+        }
+
+        function updateImageList() {
+            imageList.innerHTML = '';
+            images.forEach((src, index) => {
+                const li = document.createElement('li');
+                li.draggable = true; // Enable drag and drop
+                li.dataset.index = index;
+
+                const img = document.createElement('img');
+                img.src = src;
+
+                const removeButton = document.createElement('button');
+                removeButton.textContent = 'Remove';
+                removeButton.onclick = () => {
+                    images.splice(index, 1);
+                    updateImageList();
+                };
+
+                li.appendChild(img);
+                li.appendChild(removeButton);
+                imageList.appendChild(li);
+            });
+            enableDragAndDrop();
+        }
+
+        function enableDragAndDrop() {
+            const listItems = document.querySelectorAll('#image-list li');
+
+            let draggingItem = null;
+
+            listItems.forEach(item => {
+                item.addEventListener('dragstart', (e) => {
+                    draggingItem = item;
+                    item.classList.add('dragging');
+                    e.dataTransfer.effectAllowed = 'move';
+                });
+
+                item.addEventListener('dragend', () => {
+                    draggingItem.classList.remove('dragging');
+                    draggingItem = null;
+                });
+
+                item.addEventListener('dragover', (e) => {
+                    e.preventDefault();
+                    const draggingIndex = parseInt(draggingItem.dataset.index);
+                    const targetIndex = parseInt(item.dataset.index);
+
+                    if (draggingIndex !== targetIndex) {
+                        const parent = imageList;
+                        const items = Array.from(parent.children);
+                        parent.insertBefore(
+                            items[draggingIndex],
+                            targetIndex > draggingIndex ? item.nextSibling : item
+                        );
+
+                        // Update the order in the `images` array
+                        const movedImage = images.splice(draggingIndex, 1)[0];
+                        images.splice(targetIndex, 0, movedImage);
+
+                        updateImageList();
+                    }
+                });
+            });
+        }
+
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropZone.style.borderColor = '#007BFF';
+        });
+
+        dropZone.addEventListener('dragleave', () => {
+            dropZone.style.borderColor = '#bbb';
+        });
+
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.style.borderColor = '#bbb';
+            handleFiles(e.dataTransfer.files);
+        });
+
+        dropZone.addEventListener('click', () => fileInput.click());
+
+        fileInput.addEventListener('change', () => handleFiles(fileInput.files));
+
+        addButton.addEventListener('click', () => fileInput.click());
+
+        generateButton.addEventListener('click', () => {
+            if (images.length === 0) {
+                alert('Please add some images first!');
+                return;
+            }
+
+            const fileName = fileNameInput.value.trim() || 'document';
+            const { jsPDF } = window.jspdf;
+
+            let pdf;
+            images.forEach((img, index) => {
+                const imgObj = new Image();
+                imgObj.src = img;
+
+                imgObj.onload = () => {
+                    const imgWidth = imgObj.width;
+                    const imgHeight = imgObj.height;
+                    const orientation = imgWidth > imgHeight ? 'landscape' : 'portrait';
+                    const pdfWidth = imgWidth * 0.264583; // Convert px to mm
+                    const pdfHeight = imgHeight * 0.264583;
+
+                    if (!pdf) {
+                        pdf = new jsPDF(orientation, 'mm', [pdfWidth, pdfHeight]);
+                    } else {
+                        pdf.addPage([pdfWidth, pdfHeight], orientation);
+                    }
+
+                    pdf.addImage(img, 'JPEG', 0, 0, pdfWidth, pdfHeight);
+
+                    if (index === images.length - 1) {
+                        pdf.save(`${fileName}.pdf`);
+                    }
+                };
+            });
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Combine PDF with Drag-and-Drop Order</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            background: linear-gradient(135deg, #89f7fe, #66a6ff);
+        }
+
+        .container {
+            text-align: center;
+            background: #fff;
+            padding: 20px 30px;
+            border-radius: 10px;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+            max-width: 600px;
+            width: 100%;
+			margin-bottom: 350px;
+        }
+
+        h1 {
+            color: #333;
+            margin-bottom: 20px;
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 5px;
+            color: #555;
+        }
+
+        input[type="file"] {
+            display: none;
+        }
+
+        .button-wrapper {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+        }
+
+        button {
+            background: #007bff;
+            color: #fff;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: background 0.3s ease;
+        }
+
+        button:hover {
+            background: #0056b3;
+        }
+
+        .file-list {
+            list-style-type: none;
+            padding: 0;
+            margin: 20px 0;
+            max-height: 300px;
+            overflow-y: auto;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+        }
+
+        .file-item {
+            background: #f0f0f0;
+            margin: 5px 0;
+            padding: 10px;
+            border-radius: 5px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            cursor: grab;
+        }
+
+        .file-item:active {
+            cursor: grabbing;
+        }
+
+        .file-item button {
+            background: #dc3545;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+
+        .file-item button:hover {
+            background: #c82333;
+        }
+
+        .file-item span {
+            flex-grow: 1;
+        }
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/pdf-lib/dist/pdf-lib.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <h1>Combine PDF Files</h1>
+        <div class="form-group">
+            <label for="file-input">Select PDF Files (in order):</label>
+            <div class="button-wrapper">
+                <button id="select-files-btn">Select Files</button>
+                <input type="file" id="file-input" multiple accept="application/pdf">
+            </div>
+        </div>
+        <ul id="file-list" class="file-list"></ul>
+        <button id="combine-btn">Combine PDFs</button>
+        <a id="download-link" style="display: none;">Download Combined PDF</a>
+    </div>
+
+    <script>
+        const fileInput = document.getElementById('file-input');
+        const fileList = document.getElementById('file-list');
+        const combineBtn = document.getElementById('combine-btn');
+        const downloadLink = document.getElementById('download-link');
+        const selectFilesBtn = document.getElementById('select-files-btn');
+        let files = [];
+
+        // Open file input dialog when "Select Files" button is clicked
+        selectFilesBtn.addEventListener('click', () => {
+            fileInput.click();
+        });
+
+        // Handle file selection
+        fileInput.addEventListener('change', (event) => {
+            const selectedFiles = Array.from(event.target.files);
+            selectedFiles.forEach(file => {
+                files.push(file);
+                const listItem = createFileListItem(file);
+                fileList.appendChild(listItem);
+            });
+        });
+
+        // Create file list item with drag and drop functionality
+        function createFileListItem(file) {
+            const listItem = document.createElement('li');
+            listItem.classList.add('file-item');
+            listItem.draggable = true;
+            listItem.innerHTML = `
+                <span>${file.name}</span>
+                <button onclick="removeFile('${file.name}')">Remove</button>
+            `;
+
+            listItem.addEventListener('dragstart', (e) => {
+                e.dataTransfer.setData('text/plain', file.name);
+            });
+
+            listItem.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                listItem.style.backgroundColor = '#d3d3d3';
+            });
+
+            listItem.addEventListener('dragleave', () => {
+                listItem.style.backgroundColor = '#f0f0f0';
+            });
+
+            listItem.addEventListener('drop', (e) => {
+                e.preventDefault();
+                const draggedFileName = e.dataTransfer.getData('text/plain');
+                const draggedIndex = files.findIndex(f => f.name === draggedFileName);
+                const targetIndex = files.findIndex(f => f.name === file.name);
+
+                if (draggedIndex !== targetIndex) {
+                    const [removed] = files.splice(draggedIndex, 1);
+                    files.splice(targetIndex, 0, removed);
+
+                    fileList.innerHTML = '';
+                    files.forEach(f => fileList.appendChild(createFileListItem(f)));
+                }
+
+                listItem.style.backgroundColor = '#f0f0f0';
+            });
+
+            return listItem;
+        }
+
+        // Remove file from the list
+        function removeFile(fileName) {
+            files = files.filter(file => file.name !== fileName);
+            fileList.innerHTML = '';
+            files.forEach(file => fileList.appendChild(createFileListItem(file)));
+        }
+
+        // Combine PDFs when the button is clicked
+        combineBtn.addEventListener('click', async () => {
+            if (files.length === 0) {
+                alert('Please select PDF files to combine.');
+                return;
+            }
+
+            // Initialize a new PDF document
+            const pdfDoc = await PDFLib.PDFDocument.create();
+
+            // Add pages from selected files in the selected order
+            for (const file of files) {
+                const arrayBuffer = await file.arrayBuffer();
+                const donorPdfDoc = await PDFLib.PDFDocument.load(arrayBuffer);
+                const donorPages = await pdfDoc.copyPages(
+                    donorPdfDoc,
+                    donorPdfDoc.getPageIndices()
+                );
+
+                donorPages.forEach((page) => pdfDoc.addPage(page));
+            }
+
+            // Serialize the PDF to bytes
+            const pdfBytes = await pdfDoc.save();
+
+            // Create a Blob from the bytes and generate a download link
+            const blob = new Blob([pdfBytes], { type: 'application/pdf' });
+            downloadLink.href = URL.createObjectURL(blob);
+            downloadLink.download = 'combined.pdf';
+            downloadLink.style.display = 'block';
+            downloadLink.textContent = 'Download Combined PDF';
+        });
+    </script>
+</body>
+</html>
